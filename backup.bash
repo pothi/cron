@@ -1,8 +1,14 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-version=3.4
+version=3.6
 
 # changelog
+# 3.6
+#   - date: 2026-03-10
+#   - better output info.
+# 3.5
+#   - date: 2026-02-14
+#   - more checks; fix if condition for gitdir
 # 3.4
 #   - date: 2025-12-31
 #   - create ~/git/cron directory on first run.
@@ -27,6 +33,8 @@ version=3.4
 #   - minor tweaks
 
 export PATH=~/bin:~/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+current_cron=
 
 # logging everything
 [ -d ~/log ] || mkdir ~/log
@@ -135,7 +143,7 @@ fi
 
 alertEmail=${custom_email:-${BACKUP_ADMIN_EMAIL:-${ADMIN_EMAIL:-"root@localhost"}}}
 
-[ ! "$gitdir" ] && gitdir=~/git/cron
+[ ! -d "$gitdir" ] && gitdir=~/git/cron
 
 if [ ! -d "$gitdir" ]; then
     echo "Version: $version"
@@ -152,17 +160,23 @@ fi
 # echo "Cron User: $unique_file_name"; exit
 
 # take a (temporary) backup of the existing cron
-[ -d ~/tmp ] || mkdir ~/tmp
-crontab -l > ~/tmp/crontab
-current_cron=~/tmp/crontab
+
+current_cron=$(mktemp)
+# echo $current_cron
+crontab -l > $current_cron
+if [ ! -s $current_cron ]; then
+    echo >&2 'Could not get current cron content'
+    exit 1
+fi
 
 cd "$gitdir" || exit 1
-echo "Pulling changes..."
+printf '%-72s' "Pulling changes..."
 if ! git pull --quiet; then
     msg="Error while pulling changes!"
     printf "\n%s\n\n" "$msg"
     echo "$msg" | mail -s 'Cron Backup Info' "$alertEmail"
 fi
+echo done.
 
 # first if: true only for a new OS.
 # second if: true if there is any change in cron
@@ -172,7 +186,8 @@ if [ ! -f "$gitdir/$unique_file_name" ] ; then
     cp "$current_cron" "$gitdir/$unique_file_name"
     git add .
     if git commit -m "Auto commit for $unique_file_name by $0" --quiet ; then
-        echo "Pushing changes..."
+        echo 'Local changes are found.'
+        printf '%-72s' "Pushing changes..."
         if git push --quiet >/dev/null; then
             msg="Successfully pushed changes!"
             [ "$success_alert" ] && echo "$msg" | mail -s 'Cron Backup Info' "$alertEmail"
@@ -180,14 +195,16 @@ if [ ! -f "$gitdir/$unique_file_name" ] ; then
             msg="Error while pushing changes!"
             echo "$msg" | mail -s 'Cron Backup Info' "$alertEmail"
         fi
-        printf "\n%s\n\n" "$msg"
+        echo done.
+        # printf "\n%s\n\n" "$msg"
     fi
 else
     if ! diff "$current_cron" "$gitdir/$unique_file_name" >/dev/null ; then
+        echo 'Local changes are found.'
         cp "$current_cron" "$gitdir/$unique_file_name"
         git add .
         if git commit -m "Auto commit for $unique_file_name by $0" --quiet ; then
-            echo "Pushing changes..."
+            printf '%-72s' "Pushing changes..."
             if git push --quiet >/dev/null; then
                 msg="Successfully pushed changes!"
                 [ "$success_alert" ] && echo "$msg" | mail -s 'Cron Backup Info' "$alertEmail"
@@ -195,7 +212,8 @@ else
                 msg="Error while pushing changes!"
                 echo "$msg" | mail -s 'Cron Backup Info' "$alertEmail"
             fi
-            printf "\n%s\n\n" "$msg"
+            # printf "\n%s\n\n" "$msg"
+            echo done.
         fi
     else
         echo "No local changes since last backup!"
@@ -203,6 +221,6 @@ else
 fi
 
 # remove the temporary file
-rm $current_cron
+[ -f $current_cron ] && rm $current_cron
 
 printf "All done.\n\n"
