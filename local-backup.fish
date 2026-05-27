@@ -1,15 +1,17 @@
 #!/usr/bin/env fish
 
-set ver 1.1
+set ver 1.2
+
+# changelog
+# 1.2
+#   - date: 2026-04-20
+#   - create temporary file as needed.
 
 # variables
 set backup_location ~/.config/cron/
 set backup_file latest
 
 set log_file ~/log/(status basename | awk -F. '{print $1}').log
-
-set tmp_cron_file $(mktemp)
-trap 'rm "$tmp_cron_file"' EXIT INT TERM
 
 echo "Timestamp: $(date +%c)"
 
@@ -51,6 +53,9 @@ function __backup_cron_locally
         echo Datewise backups are available at {$backup_location}archive
         return
     end
+
+    set --global tmp_cron_file $(mktemp)
+    trap 'rm "$tmp_cron_file"' EXIT INT TERM
 
     crontab -l > $tmp_cron_file
 
